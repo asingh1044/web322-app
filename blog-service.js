@@ -1,9 +1,3 @@
-/*const fs = require("fs");
-const { resolve } = require("path");
-
-let posts = [];
-let categories = [];*/
-
 const Sequelize = require('sequelize');
 const { gte } = Sequelize.Op;
 

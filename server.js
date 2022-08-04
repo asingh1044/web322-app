@@ -1,13 +1,13 @@
 /*********************************************************************************
-* WEB322 – Assignment 05
+* WEB322 – Assignment 06
 * I declare that this assignment is my own work in accordance with Seneca Academic 
 Policy. No part * of this assignment has been copied manually or electronically from any 
 other source 
 * (including 3rd party web sites) or distributed to other students.
 * 
-* Name: ____Ajitpal Singh___ Student ID: ___113194211__________ Date: 2022-07-21________________
+* Name: ____Ajitpal Singh___ Student ID: ___113194211__________ Date: 2022-08-03________________
 *
-* Online (Heroku) Link:  _____https://stormy-refuge-11522.herokuapp.com/_____________________________________________
+* Online (Heroku) Link:  ______https://tranquil-hollows-14028.herokuapp.com/____________________________________________
 *
 ********************************************************************************/
 
@@ -27,12 +27,21 @@ const upload = multer();
 const { posts } = require("./blog-service");
 const exphbs = require("express-handlebars");
 const stripJs = require('strip-js');
+const authData = require("./auth-service")
+const clientSessions = require("client-sessions")
 
 app.engine('.hbs', exphbs.engine({ extname: '.hbs' }));
 app.set('view engine', '.hbs');
 
 app.use(express.static('public'));
 app.use(express.urlencoded({extended: true}));
+
+app.use(clientSessions({
+    cookieName: 'session',
+    secret: 'a6_web322',
+    duration: 2 * 60 * 1000,
+    activeDuration: 1000 * 60
+}))
 
 app.use(function(req,res,next){
   let route = req.path.substring(1);
@@ -41,6 +50,19 @@ app.use(function(req,res,next){
   next();
  });
 
+ app.use(function(req, res, next) {
+    res.locals.session = req.session;
+    next();
+});
+
+const ensureLogin = (req, res, next) => {
+    if (!req.session.user) {
+        res.redirect("/login")
+    } else {
+        next()
+    }
+}
+ 
  app.engine('.hbs', exphbs.engine({ 
   extname: '.hbs',
   helpers: {
@@ -78,12 +100,8 @@ app.get('/', (req, res) => {
       app.get("/about", (req, res) => {
         res.render("about")
       })
-      
-      /*app.get('/posts/add', (req, res) => {
-       res.render("addPost")
-      });*/
 
-      app.get('/posts/add', (req, res) => {
+      app.get('/posts/add', ensureLogin, (req, res) => {
         blogData.getCategories().then(categories => {
             res.render("addPost", {categories: categories})
         }).catch(() => {
@@ -91,11 +109,11 @@ app.get('/', (req, res) => {
         })
     });
 
-      app.get("/categories/add", (req, res) => {
+      app.get("/categories/add", ensureLogin,(req, res) => {
         res.render("addCategory")
     })
 
-      app.get("/posts", (req, res) => {
+      app.get("/posts", ensureLogin, (req, res) => {
         if(req.query.category) {
           blogData.getPostsByCategory(req.query.category).then(posts => {
             if (posts.length > 0) {
@@ -229,7 +247,7 @@ app.get('/', (req, res) => {
     res.render("blog", {data: viewData})
 });
 
-      app.get("/categories", (req,res) =>{
+      app.get("/categories", ensureLogin, (req,res) =>{
         blogData.getCategories().then(categories => {
           if (categories.length > 0) {
               res.render("categories", { categories })
@@ -256,7 +274,7 @@ app.get('/', (req, res) => {
       secure: true
       });
 
-      app.post('/posts/add', upload.single('featureImage'), function (req, res, next) {
+      app.post('/posts/add', ensureLogin, upload.single('featureImage'), function (req, res, next) {
         if (req.file) {
             let streamUpload = (req) => {
                 return new Promise((resolve, reject) => {
@@ -303,7 +321,7 @@ app.get('/', (req, res) => {
     });
 
 
-      app.post("/categories/add", (req, res) => {
+      app.post("/categories/add", ensureLogin, (req, res) => {
         let categoriesData = {
             category: req.body.category
         }
@@ -314,7 +332,7 @@ app.get('/', (req, res) => {
         })
     })
 
-      app.get("/categories/delete/:id", (req, res) => {
+      app.get("/categories/delete/:id", ensureLogin, (req, res) => {
         blogData.deleteCategoryById(req.params.id).then(() => {
           res.redirect("/categories")
       }).catch(err => {
@@ -322,20 +340,59 @@ app.get('/', (req, res) => {
       })
     })
   
-      app.get("/posts/delete/:id", (req, res) => {
+      app.get("/posts/delete/:id", ensureLogin, (req, res) => {
         blogData.deletePostById(req.params.id).then(() => {
           res.redirect("/posts")
       }).catch(err => {
           res.status(500).send("Unable to Remove Post / Post not found")
       })
     })
-  
+    
+    app.get("/login", (req, res) => {
+        res.render("login")
+    })
+    
+    app.get("/register", (req, res) => {
+        res.render("register")
+    })
+ 
+    app.post("/register", (req, res) => {
+        authData.registerUser(req.body).then(() => {
+            res.render("register", { successMessage: "User created" })
+        }).catch(err => {
+            res.render("register", { errorMessage: err, userName: req.body.userName })
+        })
+    })
 
-      app.use((req,res)=>{
+    app.post("/login", (req, res) => {
+        req.body.userAgent = req.get('User-Agent')
+        authData.checkUser(req.body).then(user => {
+            req.session.user = {
+                userName: user.userName,
+                email: user.email,
+                loginHistory: user.loginHistory
+            }
+            res.redirect('/posts')
+        }).catch(err => {
+            res.render("login", { errorMessage: err, userName: req.body.userName })
+        })
+           
+    })
+    
+    app.get("/logout", (req, res) => {
+        req.session.reset()
+        res.redirect("/")
+    })
+    
+    app.get("/userHistory", ensureLogin, (req, res) => {
+        res.render("userHistory")
+    })
+
+    app.use((req,res)=>{
         res.status(404).render("404")
     })
 
-      blogData.initialize().then(() => {
+      blogData.initialize().then(authData.initialize).then(() => {
         app.listen(PORT,  () => {
             console.log('Express HTTP server is listening to the port', PORT)
         })
